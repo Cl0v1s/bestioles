@@ -16,16 +16,18 @@ static void check(bool condition, const char* name) {
     }
 }
 
-
 class TestDevice: public Device {
     void alert() override {}
 };
+
+// zero bonuses/maluses so manageStats() never changes happy during tests
+static StateModifier noopModifier = {0, 0, 0, 0, 0, 0};
 
 static void testOvernightSleep() {
     // sleep at 22:00, wake at 08:00
     World world;
     TestDevice device;
-    Pet pet(world, device);
+    Pet pet(world, device, noopModifier);
     pet.setSleepSchedule(22, 0, 8, 0);
 
     world.setTime(22 * 3600);
@@ -65,7 +67,7 @@ static void testDayNap() {
     // sleep at 10:00, wake at 14:00
     World world;
     TestDevice device;
-    Pet pet(world, device);
+    Pet pet(world, device, noopModifier);
     pet.setSleepSchedule(10, 0, 14, 0);
 
     world.setTime(8 * 3600);
@@ -97,7 +99,7 @@ static void testTimeWrapping() {
     // multi-day timestamps should wrap correctly
     World world;
     TestDevice device;
-    Pet pet(world, device);
+    Pet pet(world, device, noopModifier);
     pet.setSleepSchedule(22, 0, 8, 0);
 
     // 2 full days + 23h
@@ -115,7 +117,7 @@ static void testSleepWithMinutes() {
     // sleep at 22:30, wake at 07:45
     World world;
     TestDevice device;
-    Pet pet(world, device);
+    Pet pet(world, device, noopModifier);
     pet.setSleepSchedule(22, 30, 7, 45);
 
     world.setTime(22 * 3600 + 29 * 60);
@@ -135,6 +137,75 @@ static void testSleepWithMinutes() {
     check(!pet.getSleeping(), "minutes: awake at 07:45");
 }
 
+static void testForceSleepLightOff() {
+    // strain=50 keeps the pet below the 75 threshold so forced sleep is not cleared by the strain check
+    World world;
+    TestDevice device;
+    Pet pet(world, device, noopModifier);
+    pet.setSleepSchedule(22, 0, 8, 0);
+    pet.setStrain(50);
+
+    world.setTime(10 * 3600);
+    world.light = true;
+    pet.update();
+    check(!pet.getSleeping(), "light: awake at 10:00 with light on");
+
+    world.light = false;
+    pet.update();
+    check(pet.getSleeping(), "light: sleeping when light turned off");
+
+    world.light = true;
+    pet.update();
+    check(pet.getSleeping(), "light: still forced sleep after light on (strain < 75)");
+
+    pet.setStrain(100);
+    pet.update();
+    check(!pet.getSleeping(), "light: awake after energy recovery");
+}
+
+static void testForceSleepExhaustion() {
+    World world;
+    TestDevice device;
+    Pet pet(world, device, noopModifier);
+    pet.setSleepSchedule(22, 0, 8, 0);
+
+    world.setTime(10 * 3600);
+    world.light = true;
+    pet.update();
+    check(!pet.getSleeping(), "exhaustion: awake before exhaustion");
+
+    pet.setStrain(0);
+    pet.update();
+    check(pet.getSleeping(), "exhaustion: sleeping when strain hits 0");
+
+    pet.setStrain(50);
+    pet.update();
+    check(pet.getSleeping(), "exhaustion: still sleeping at strain 50");
+
+    pet.setStrain(100);
+    pet.update();
+    check(!pet.getSleeping(), "exhaustion: awake after full recovery");
+}
+
+static void testCaremissLightPenalty() {
+    // sleeping with light on creates a LIGHT care miss; ignoring it for 15 min costs 10 happy
+    World world;
+    TestDevice device;
+    Pet pet(world, device, noopModifier);
+    pet.setSleepSchedule(10, 0, 14, 0);
+
+    world.setTime(12 * 3600);
+    world.light = true;
+    pet.update(); // sleeping + light on → LIGHT care miss created at t=12*3600
+
+    check(pet.getHappy() == 100, "light penalty: happy still 100 before delay");
+
+    world.setTime(12 * 3600 + CAREMISS_DELAY + 1);
+    pet.update(); // care miss applies → happy 100-10=90
+
+    check(pet.getHappy() == 90, "light penalty: happy reduced to 90 after delay");
+}
+
 int main() {
     std::cout << "=== testOvernightSleep ===\n";
     testOvernightSleep();
@@ -147,6 +218,15 @@ int main() {
 
     std::cout << "\n=== testSleepWithMinutes ===\n";
     testSleepWithMinutes();
+
+    std::cout << "\n=== testForceSleepLightOff ===\n";
+    testForceSleepLightOff();
+
+    std::cout << "\n=== testForceSleepExhaustion ===\n";
+    testForceSleepExhaustion();
+
+    std::cout << "\n=== testCaremissLightPenalty ===\n";
+    testCaremissLightPenalty();
 
     std::cout << "\n" << passed << " passed, " << failed << " failed\n";
     return failed == 0 ? 0 : 1;

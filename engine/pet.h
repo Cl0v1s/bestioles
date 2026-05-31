@@ -7,11 +7,20 @@
 #define CAREMISS_LENGTH 5
 #define CAREMISS_DELAY 15 * 60
 
+typedef struct {
+    float happyMalus;
+    float happyBonus;
+    float strainAwake;
+    float hungryAwake;
+    float strainSleeping;
+    float hungrySleeping;
+} StateModifier;
+
 class Pet {
     private: 
-        unsigned int happy = 100;
-        unsigned int strain = 100;
-        unsigned int hungry = 100;
+        float happy = 100;
+        float strain = 100;
+        float hungry = 100;
 
         unsigned int sleepHour = 0;
         unsigned int sleepMin = 0;
@@ -69,22 +78,61 @@ class Pet {
 
         void manageCaremisses() {
             const unsigned int time = world.getTime();
-            for(int i = 0; i < caremissesSize; i++) {
+            for(unsigned int i = 0; i < caremissesSize; i++) {
                 if(caremisses[i].getResolved() == false && time - caremisses[i].createdAt > CAREMISS_DELAY) {
-                    caremisses[i].apply(this);
+                    switch(caremisses[i].type) {
+                        case CAREMISS_HUNGRY: {
+                            this->setHungry(100);
+                            this->setHappy(this->getHappy() - 25);
+                            break;
+                        }
+                        case CAREMISS_STRAIN: {
+                            this->setStrain(100);
+                            this->setHappy(this->getHappy() - 25);
+                            break;
+                        }
+                        case CAREMISS_POOP: {
+                            this->setHappy(this->getHappy() - 25);
+                            break;
+                        }
+                        case CAREMISS_LIGHT: {
+                            this->setHappy(this->getHappy() - 10);
+                            break;
+                        }
+                    }
+                    caremisses[i].resolved = true;
                 }
+            }
+        }
+
+        void manageStats() {
+            if(strain >= 50 && hungry >= 50) {
+                happy += modifier.happyBonus;
+            } else if(strain < 50 && hungry < 50) {
+                happy += modifier.happyMalus;
+            }
+
+            if(sleeping) {
+                hungry += modifier.hungrySleeping;
+                strain += modifier.strainSleeping;
+            } else {
+                hungry += modifier.hungryAwake;
+                strain += modifier.strainAwake;
             }
         }
 
     public:
         World &world;
         Device &device;
+        StateModifier &modifier;
 
-        Pet(World& w, Device& d) : world(w), device(d) {}
+        Pet(World& w, Device& d, StateModifier &m) : world(w), device(d), modifier(m) {}
 
+        // to call every 1 minute
         void update() {
             manageCaremisses();
             manageSleeping();
+            manageStats();
         }
 
         void death() {
@@ -102,15 +150,15 @@ class Pet {
         }
 
         void removeCaremiss(unsigned int type) {
-            int i = 0;
+            unsigned int i = 0;
             bool done = false;
-            do { 
-                if(caremisses[i].type == type && caremisses[i].getResolved() == false) { // we can only remove caremiss of a given type if they arent already resolved 
+            while (i < caremissesSize) {
+                if(caremisses[i].type == type && caremisses[i].getResolved() == false) {
                     done = true;
-                } else {
-                    i += 1;
+                    break;
                 }
-            } while (done == false && i < caremissesSize);
+                i += 1;
+            }
             if(done == false) return;
             for(; i < caremissesSize - 1; i++) {
                 caremisses[i].type = caremisses[i+1].type;
@@ -119,7 +167,7 @@ class Pet {
             caremissesSize -= 1;
         }
 
-        void setHappy(int value) {
+        void setHappy(float value) {
             if(value < 0) {
                 this->happy = 0;
             } else if(value > 100) {
@@ -129,7 +177,7 @@ class Pet {
             }
         }
 
-        void setStrain(int value) {
+        void setStrain(float value) {
             if(value < 0) {
                 this->strain = 0;
             } else if(value > 100) {
@@ -139,7 +187,7 @@ class Pet {
             }
         }
 
-        void setHungry(int value) {
+        void setHungry(float value) {
             if(value < 0) {
                 this->hungry = 0;
             } else if(value > 100) {
@@ -149,15 +197,15 @@ class Pet {
             }
         }
 
-        unsigned int getHappy() const {
+        float getHappy() const {
             return this->happy;
         }
 
-        unsigned int getStrain() const {
+        float getStrain() const {
             return this->strain;
         }
 
-        unsigned int getHungry() const {
+        float getHungry() const {
             return this->hungry;
         }
 
