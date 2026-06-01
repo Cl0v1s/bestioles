@@ -1,16 +1,17 @@
 CXX      = g++
 CXXFLAGS = -std=c++17 -Wall -Wextra -I.
 
-TEST_SRC = tests/test_pet.cpp
-TEST_BIN = tests/test_pet
-
 .PHONY: test clean
 
-test: $(TEST_BIN)
-	./$(TEST_BIN)
+test: tests/test_pet tests/test_utils
+	./tests/test_pet
+	./tests/test_utils
 
-$(TEST_BIN): $(TEST_SRC) engine/pet.h engine/caremiss.h
+tests/test_pet: tests/test_pet.cpp engine/pet.h engine/caremiss.h
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+tests/test_utils: tests/test_utils.cpp utils/memory.h utils/string.h
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 clean:
-	rm -f $(TEST_BIN)
+	rm -f tests/test_pet tests/test_utils
