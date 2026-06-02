@@ -30,12 +30,20 @@ inline Ptr* pool_alloc(unsigned int size) {
     return p;
 }
 
-inline void pool_free(Ptr* ptr) {
+inline unsigned char pool_copy(Ptr* dest, void* source, unsigned int len) {
+    if(dest->data == 0 || source == 0) return 1;
+    for(unsigned int i = 0; i < len; i++) {
+        ((unsigned char*)dest->data)[i] = ((unsigned char*)source)[i];
+    }
+    return 0;
+}
+
+inline unsigned char pool_free(Ptr* ptr) {
     unsigned int i = ptr - ptrs;
     // we mark this one for deletion
     ptr->data = 0;
     if(i != ptrsIndex - 1) {
-        return;
+        return 1;
     }
     // we try to compact if others were fred
     while(i >= 0 && ptrs[i].data == 0) {
@@ -43,6 +51,7 @@ inline void pool_free(Ptr* ptr) {
         ptrsIndex -= 1;
         i -= 1;
     }
+    return 0;
 }
 
 inline void pool_reset() {
